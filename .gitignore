@@ -11,4 +11,6 @@ yarn-error.log*
 
 # OS files
 .DS_Store
-Thumbs.db
+Thumbs.db.env
+node_modules/
+bot.log

@@ -7,7 +7,7 @@ dotenv.config();
 const USER_CONFIG_PATH = path.resolve(process.cwd(), "user-config.json");
 
 export const config = {
-  mode: "paper_trading",
+  mode: "live_trading",
   budgetSol: 0.377,
   smartWallet: {
     minClusterMatch: 2,

@@ -1,17 +1,22 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { env, config, saveConfig } from './config.js';
 import { addWalletListener, removeWalletListener } from './listener.js';
-import { executeSwap } from './executor.js'; // ⬅️ TAMBAHAN PHASE 8
+import { executeSwap, executeSell } from './executor.js'; 
 
 const bot = new TelegramBot(env.TELEGRAM_BOT_TOKEN, { polling: true });
 const signalCache = new Map();
 
-// Fungsi Alert (Tidak diubah)
+// ==========================================
+// 🚨 FUNGSI ALERT & CALLBACK KOMBOL BELI
+// ==========================================
 export async function sendSignalAlert(tokenAddress, riskScore, clusterCount) {
   const signalId = Math.random().toString(36).substring(7);
   const timestamp = Date.now();
   
-  signalCache.set(signalId, { tokenAddress, amount: 0.01, timestamp });
+  // PERBAIKAN: Mengambil jumlah SOL dari config, bukan di-hardcode
+  const buyAmount = config.trading.semiAutoAmountSol;
+  
+  signalCache.set(signalId, { tokenAddress, amount: buyAmount, timestamp });
 
   const message = `🚨 **SIGNAL DETECTED** 🚨\n\n` +
                   `Token: \`${tokenAddress}\`\n` +
@@ -22,7 +27,8 @@ export async function sendSignalAlert(tokenAddress, riskScore, clusterCount) {
     parse_mode: 'Markdown',
     reply_markup: {
       inline_keyboard: [
-        [{ text: "🛒 BUY 0.01 SOL", callback_data: `buy_${signalId}` }],
+        // PERBAIKAN: Teks tombol otomatis mengikuti jumlah di config
+        [{ text: `🛒 BUY ${buyAmount} SOL`, callback_data: `buy_${signalId}` }],
         [{ text: "❌ IGNORE", callback_data: `ignore_${signalId}` }]
       ]
     }
@@ -30,7 +36,6 @@ export async function sendSignalAlert(tokenAddress, riskScore, clusterCount) {
   await bot.sendMessage(env.TELEGRAM_CHAT_ID, message, options);
 }
 
-// Handler Tombol (DIPERBARUI UNTUK PHASE 8)
 bot.on('callback_query', async (query) => {
   const [action, signalId] = query.data.split('_');
   const signalData = signalCache.get(signalId);
@@ -41,21 +46,16 @@ bot.on('callback_query', async (query) => {
 
   const now = Date.now();
 
-  // Jika tombol BUY dipencet
   if (action === 'buy') {
-    // Validasi 5 Menit Timeout
-    if (now - signalData.timestamp > 300000) {
+    if (now - signalData.timestamp > 300000) { // 5 menit expired
       signalCache.delete(signalId);
       return bot.answerCallbackQuery(query.id, { text: "❌ Sinyal Expired!", show_alert: true });
     }
     
-    // Memberitahu Anda bahwa proses sedang berjalan
     bot.sendMessage(env.TELEGRAM_CHAT_ID, `⏳ Mengeksekusi BUY ${signalData.amount} SOL untuk token:\n\`${signalData.tokenAddress}\`...`, { parse_mode: 'Markdown' });
     
-    // Panggil Mesin Eksekutor
     const result = await executeSwap(signalData.tokenAddress, signalData.amount);
     
-    // Laporan Akhir Eksekusi
     if (result.success) {
       const modeText = result.mode === 'paper' ? '🟢 **[PAPER TRADING]** ' : '🔥 **[LIVE TRADING]** ';
       bot.sendMessage(env.TELEGRAM_CHAT_ID, `${modeText}Pembelian Berhasil!\n\n🔗 **TX ID:** \`${result.txId}\``, { parse_mode: 'Markdown' });
@@ -64,35 +64,32 @@ bot.on('callback_query', async (query) => {
     }
   }
 
-  // Jika tombol IGNORE dipencet
   if (action === 'ignore') {
     bot.sendMessage(env.TELEGRAM_CHAT_ID, `🗑️ Token \`${signalData.tokenAddress}\` diabaikan.`, { parse_mode: 'Markdown' });
-    signalCache.delete(signalId); // Hapus dari memori agar tidak menumpuk
+    signalCache.delete(signalId); 
   }
 
   bot.answerCallbackQuery(query.id);
 });
 
 // ==========================================
-// 🛠️ FITUR ADMIN COMMAND (Tidak diubah)
+// 🛠️ FITUR ADMIN COMMAND
 // ==========================================
 
-// 1. Tambah Wallet
 bot.onText(/\/add (.+)/, (msg, match) => {
-  if (msg.chat.id.toString() !== env.TELEGRAM_CHAT_ID) return; // Keamanan: Hanya Anda yang bisa perintahkan bot
+  if (msg.chat.id.toString() !== env.TELEGRAM_CHAT_ID) return; 
   
   const newWallet = match[1].trim();
   if (!config.smartWallet.targetWallets.includes(newWallet)) {
     config.smartWallet.targetWallets.push(newWallet);
-    saveConfig(); // Simpan ke file permanen
-    addWalletListener(newWallet); // Langsung pantau tanpa restart
+    saveConfig(); 
+    addWalletListener(newWallet); 
     bot.sendMessage(env.TELEGRAM_CHAT_ID, `✅ Wallet berhasil ditambahkan & dipantau:\n\`${newWallet}\``, { parse_mode: "Markdown" });
   } else {
     bot.sendMessage(env.TELEGRAM_CHAT_ID, `⚠️ Wallet sudah ada di daftar pantauan.`);
   }
 });
 
-// 2. Hapus Wallet
 bot.onText(/\/remove (.+)/, (msg, match) => {
   if (msg.chat.id.toString() !== env.TELEGRAM_CHAT_ID) return;
   
@@ -101,15 +98,14 @@ bot.onText(/\/remove (.+)/, (msg, match) => {
   
   if (index !== -1) {
     config.smartWallet.targetWallets.splice(index, 1);
-    saveConfig(); // Simpan penghapusan ke file
-    removeWalletListener(walletToRemove); // Copot pantauan Helius
+    saveConfig(); 
+    removeWalletListener(walletToRemove); 
     bot.sendMessage(env.TELEGRAM_CHAT_ID, `🗑️ Wallet berhasil dihapus dari pantauan:\n\`${walletToRemove}\``, { parse_mode: "Markdown" });
   } else {
     bot.sendMessage(env.TELEGRAM_CHAT_ID, `❌ Wallet tidak ditemukan di daftar pantauan.`);
   }
 });
 
-// 3. Lihat Daftar Wallet
 bot.onText(/\/list/, (msg) => {
   if (msg.chat.id.toString() !== env.TELEGRAM_CHAT_ID) return;
   
@@ -124,12 +120,28 @@ bot.onText(/\/list/, (msg) => {
     bot.sendMessage(env.TELEGRAM_CHAT_ID, text, { parse_mode: "Markdown" });
   }
 });
-// Fungsi Alert Penjualan Otomatis (Auto-Sell)
+
+// ==========================================
+// 🚨 PANIC BUTTON (Jual Paksa 100%)
+// ==========================================
+bot.onText(/\/panic (.+)/, async (msg, match) => {
+  if (msg.chat.id.toString() !== env.TELEGRAM_CHAT_ID) return;
+  
+  const tokenToSell = match[1].trim();
+  bot.sendMessage(env.TELEGRAM_CHAT_ID, `🚨 **PANIC BUTTON AKTIF!**\nMengeksekusi penjualan 100% paksa untuk:\n\`${tokenToSell}\``, { parse_mode: "Markdown" });
+  
+  // Panggil executeSell dengan parameter fraction 1.0 (100%)
+  await executeSell(tokenToSell, "🚨 PANIC SELL MANUAL", 0, config.mode, 1.0);
+});
+
+// ==========================================
+// 📩 NOTIFIKASI HASIL PENJUALAN
+// ==========================================
 export async function sendSellNotification(tokenAddress, reason, pnl, mode, txId) {
-  const pnlText = pnl > 0 ? `🟢 Untung: +${pnl.toFixed(2)}%` : `🔴 Rugi: ${pnl.toFixed(2)}%`;
+  const pnlText = pnl > 0 ? `🟢 Untung: +${pnl.toFixed(2)}%` : `🔴 Rugi/Manual: ${pnl.toFixed(2)}%`;
   const modeText = mode === 'paper' ? '🟢 **[PAPER TRADING]** ' : '🔥 **[LIVE TRADING]** ';
 
-  const message = `${modeText} **AUTO-SELL EXECUTED!** 🚨\n\n` +
+  const message = `${modeText} **SELL EXECUTED!** 🚨\n\n` +
                   `Token: \`${tokenAddress}\`\n` +
                   `Status: ${pnlText}\n` +
                   `Alasan: ${reason}\n\n` +
