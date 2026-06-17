@@ -1,6 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { env, config, saveConfig } from './config.js';
 import { addWalletListener, removeWalletListener } from './listener.js';
+import { executeSwap } from './executor.js'; // ⬅️ TAMBAHAN PHASE 8
 
 const bot = new TelegramBot(env.TELEGRAM_BOT_TOKEN, { polling: true });
 const signalCache = new Map();
@@ -29,7 +30,7 @@ export async function sendSignalAlert(tokenAddress, riskScore, clusterCount) {
   await bot.sendMessage(env.TELEGRAM_CHAT_ID, message, options);
 }
 
-// Handler Tombol (Tidak diubah)
+// Handler Tombol (DIPERBARUI UNTUK PHASE 8)
 bot.on('callback_query', async (query) => {
   const [action, signalId] = query.data.split('_');
   const signalData = signalCache.get(signalId);
@@ -39,18 +40,41 @@ bot.on('callback_query', async (query) => {
   }
 
   const now = Date.now();
+
+  // Jika tombol BUY dipencet
   if (action === 'buy') {
+    // Validasi 5 Menit Timeout
     if (now - signalData.timestamp > 300000) {
       signalCache.delete(signalId);
       return bot.answerCallbackQuery(query.id, { text: "❌ Sinyal Expired!", show_alert: true });
     }
-    bot.sendMessage(env.TELEGRAM_CHAT_ID, `⏳ Eksekusi BUY ${signalData.amount} SOL untuk \`${signalData.tokenAddress}\`...`, { parse_mode: 'Markdown' });
+    
+    // Memberitahu Anda bahwa proses sedang berjalan
+    bot.sendMessage(env.TELEGRAM_CHAT_ID, `⏳ Mengeksekusi BUY ${signalData.amount} SOL untuk token:\n\`${signalData.tokenAddress}\`...`, { parse_mode: 'Markdown' });
+    
+    // Panggil Mesin Eksekutor
+    const result = await executeSwap(signalData.tokenAddress, signalData.amount);
+    
+    // Laporan Akhir Eksekusi
+    if (result.success) {
+      const modeText = result.mode === 'paper' ? '🟢 **[PAPER TRADING]** ' : '🔥 **[LIVE TRADING]** ';
+      bot.sendMessage(env.TELEGRAM_CHAT_ID, `${modeText}Pembelian Berhasil!\n\n🔗 **TX ID:** \`${result.txId}\``, { parse_mode: 'Markdown' });
+    } else {
+      bot.sendMessage(env.TELEGRAM_CHAT_ID, `❌ **PEMBELIAN GAGAL!**\nAlasan: ${result.reason}`, { parse_mode: 'Markdown' });
+    }
   }
+
+  // Jika tombol IGNORE dipencet
+  if (action === 'ignore') {
+    bot.sendMessage(env.TELEGRAM_CHAT_ID, `🗑️ Token \`${signalData.tokenAddress}\` diabaikan.`, { parse_mode: 'Markdown' });
+    signalCache.delete(signalId); // Hapus dari memori agar tidak menumpuk
+  }
+
   bot.answerCallbackQuery(query.id);
 });
 
 // ==========================================
-// 🛠️ FITUR ADMIN COMMAND (BARU)
+// 🛠️ FITUR ADMIN COMMAND (Tidak diubah)
 // ==========================================
 
 // 1. Tambah Wallet
