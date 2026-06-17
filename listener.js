@@ -1,34 +1,29 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 import { env, config } from './config.js';
-import { sendSignalAlert } from './telegram.js';
 
-// Setup koneksi ke Helius (menggunakan WSS untuk real-time tanpa boros kuota)
 const connection = new Connection(env.RPC_URL, {
   wsEndpoint: env.WSS_URL,
 });
 
-export function startListening() {
+// Kita menambahkan parameter "onTransactionDetected" agar Listener bisa mengirim data ke index.js
+export function startListening(onTransactionDetected) {
   console.log("========================================");
   console.log("[Engine] Menghubungkan ke Helius WSS...");
   
-  // Cek apakah ada wallet yang dipantau
-  if (config.smartWallet.targetWallets.length === 0) {
-    console.log("[Peringatan] Daftar targetWallets kosong di config.");
-    console.log("[Peringatan] Masukkan setidaknya 1 alamat dompet Solana untuk dites.");
-    return;
-  }
+  if (config.smartWallet.targetWallets.length === 0) return;
 
-  // Melakukan perulangan untuk setiap dompet yang ada di konfigurasi
   config.smartWallet.targetWallets.forEach((walletAddress) => {
     try {
       const pubKey = new PublicKey(walletAddress);
       
-      // Membuka "telinga" (listener) untuk dompet ini
-      connection.onAccountChange(pubKey, (accountInfo) => {
-        console.log(`\n[⚡ ACTIVITY DETECTED] Pergerakan di dompet: ${walletAddress}`);
-        
-        // CATATAN: Di Phase 4, di sini kita akan memanggil fungsi untuk mengekstrak token apa yang dibeli.
-        // Untuk sekarang, kita hanya mencetak log.
+      // Menggunakan onLogs untuk mendapatkan "signature" (ID Transaksi)
+      connection.onLogs(pubKey, (logs) => {
+        // Abaikan transaksi yang gagal (error)
+        if (logs.err) return; 
+
+        console.log(`\n[⚡ ACTIVITY] Dompet ${walletAddress.slice(0,6)}... melakukan transaksi!`);
+        // Kirim ID Transaksi ke file utama (index.js)
+        onTransactionDetected(walletAddress, logs.signature);
         
       }, 'confirmed');
 
@@ -39,5 +34,5 @@ export function startListening() {
   });
   
   console.log("========================================");
-  console.log("[Engine] Bot standby menunggu transaksi...");
+  console.log("[Engine] Bot standby menunggu transaksi nyata...");
 }
