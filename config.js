@@ -34,6 +34,8 @@ export const env = {
   OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || "",
   SOLANA_PRIVATE_KEY: process.env.SOLANA_PRIVATE_KEY || "",
   HELIUS_API_KEY: process.env.HELIUS_API_KEY || "",
+  JUPITER_API_BASE_URL: process.env.JUPITER_API_BASE_URL || "https://lite-api.jup.ag/swap/v1",
+  JUPITER_API_KEY: process.env.JUPITER_API_KEY || "",
   
   RPC_URL: `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`,
   WSS_URL: `wss://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`
