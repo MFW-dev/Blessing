@@ -124,3 +124,16 @@ bot.onText(/\/list/, (msg) => {
     bot.sendMessage(env.TELEGRAM_CHAT_ID, text, { parse_mode: "Markdown" });
   }
 });
+// Fungsi Alert Penjualan Otomatis (Auto-Sell)
+export async function sendSellNotification(tokenAddress, reason, pnl, mode, txId) {
+  const pnlText = pnl > 0 ? `🟢 Untung: +${pnl.toFixed(2)}%` : `🔴 Rugi: ${pnl.toFixed(2)}%`;
+  const modeText = mode === 'paper' ? '🟢 **[PAPER TRADING]** ' : '🔥 **[LIVE TRADING]** ';
+
+  const message = `${modeText} **AUTO-SELL EXECUTED!** 🚨\n\n` +
+                  `Token: \`${tokenAddress}\`\n` +
+                  `Status: ${pnlText}\n` +
+                  `Alasan: ${reason}\n\n` +
+                  `🔗 **TX ID:** \`${txId}\``;
+
+  await bot.sendMessage(env.TELEGRAM_CHAT_ID, message, { parse_mode: 'Markdown' });
+}

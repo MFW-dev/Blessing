@@ -3,13 +3,28 @@ import { config } from './config.js';
 // Menyimpan daftar token yang sedang dipantau
 const activePositions = new Map();
 
-// Mengambil harga token saat ini menggunakan Jupiter Price API v2
+// Mengambil harga token saat ini menggunakan DexScreener API (Terbukti kebal blokir)
 async function getTokenPrice(tokenAddress) {
   try {
-    const response = await fetch(`https://api.jup.ag/price/v2?ids=${tokenAddress}`);
+    const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`, {
+      headers: {
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      }
+    });
+    
     const data = await response.json();
-    return data.data[tokenAddress]?.price ? parseFloat(data.data[tokenAddress].price) : null;
+    
+    // Validasi format jawaban API DexScreener
+    if (!data || !data.pairs || data.pairs.length === 0) {
+      console.log(`[Debug] API DexScreener tidak menemukan harga untuk: ${tokenAddress}`);
+      return null;
+    }
+
+    // Ambil harga (dalam USD) dari pair dengan likuiditas terbesar (index 0)
+    return parseFloat(data.pairs[0].priceUsd);
   } catch (error) {
+    console.error(`[Tracker Error] Gagal fetch harga: ${error.message}`);
     return null;
   }
 }
@@ -25,7 +40,7 @@ export async function startTracking(tokenAddress, mode, onSellSignal) {
     return;
   }
 
-  console.log(`💲 [Tracker] Harga Beli (Entry): $${initialPrice.toFixed(6)}`);
+  console.log(`💲 [Tracker] Harga Beli (Entry): $${initialPrice.toFixed(8)}`);
 
   // Simpan data posisi
   activePositions.set(tokenAddress, {
@@ -48,8 +63,8 @@ export async function startTracking(tokenAddress, mode, onSellSignal) {
     // Hitung persentase Keuntungan/Kerugian (PnL)
     const pnlPercentage = ((currentPrice - position.buyPrice) / position.buyPrice) * 100;
     
-    // Log senyap di terminal (bisa dihapus nanti jika terlalu ramai)
-    console.log(`📊 [Tracker] ${tokenAddress.slice(0,4)}... PnL saat ini: ${pnlPercentage > 0 ? '+' : ''}${pnlPercentage.toFixed(2)}%`);
+    // Log di terminal
+    console.log(`📊 [Tracker] PnL saat ini: ${pnlPercentage > 0 ? '+' : ''}${pnlPercentage.toFixed(2)}% (Harga: $${currentPrice.toFixed(8)})`);
 
     // CEK KONDISI JUAL (TAKE PROFIT ATAU STOP LOSS)
     let reasonToSell = null;
@@ -63,14 +78,14 @@ export async function startTracking(tokenAddress, mode, onSellSignal) {
     // Jika waktunya jual
     if (reasonToSell) {
       console.log(`\n🚨 [Tracker] Sinyal Jual Terpicu! Alasan: ${reasonToSell}`);
-      clearInterval(intervalId);
+      clearInterval(intervalId); // Hentikan pemantauan
       activePositions.delete(tokenAddress);
       
-      // Kirim perintah jual ke file telegram.js / executor.js
+      // Kirim perintah jual ke executor.js
       if (onSellSignal) {
         onSellSignal(tokenAddress, reasonToSell, pnlPercentage, mode);
       }
     }
 
-  }, 30000); // 30000 ms = 30 detik
+  }, 30000); // 30 detik
 }
