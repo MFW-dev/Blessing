@@ -13,7 +13,18 @@ export const config = {
   budgetSol: 0.377,
   smartWallet: {
     minClusterMatch: 2,
-    targetWallets: []
+    targetWallets: [
+      "4EtAJ1p8RjqccEVhEhaYnEgQ6kA4JHR8oYqyLFwARUj6", // 1. 90D Smart Trader (~$44.24M profit)
+      "HWdeCUjBvPP1HJ5oCJt7aNsvMWpWoDgiejUWvfFX6T7R", // 2. Multiple Memecoin Whale (~$4.38M profit)
+      "fwHknyxZTgFGytVz9VPrvWqipW2V4L4D99gEb831t81",  // 3. AI16Z / AI token trader (~$1.53M profit)
+      "3xqUaVuAWsppb8yaSPJ2hvdvfjteMq2EbdCc3CLguaTE", // 4. New token specialist (~$3.3M profit)
+      "9UWZFoiCHeYRLmzmDJhdMrP7wgrTw7DMSpPiT2eHgJHe", // 5. Gaming token specialist (~$4.3M profit)
+      "BKVaB3eNrGUVRCj3M4LiodKypBTzrpatoo7VBhmdv3eY", // 6. AI coins specialist (~$990K profit)
+      "9HCTuTPEiQvkUtLmTZvK6uch4E3pDynwJTbNw6jLhp9z", // 7. TRUMP / new crypto trader
+      "6kbwsSY4hL6WVadLRLnWV2irkMN2AvFZVAS8McKJmAtJ", // 8. High-risk smart trader
+      "5fWkLJfoDsRAaXhPJcJY19qNtDDQ5h6q1SPzsAPRrUNG", // 9. Meme coin specialist
+      "H4SSLANdxDNRCW6Qkk9w5EXi1Z27WjqQbsAiEqwFcKDQ"  // 10. Solana whale / TRUMP trader
+    ]
   },
   antiRug: {
     minLiquidityUsd: 5000,
