@@ -5,6 +5,63 @@ import { startTracking } from './tracker.js';
 import { sendSellNotification } from './telegram.js';
 
 const connection = new Connection(env.RPC_URL, { commitment: 'confirmed' });
+const SOL_MINT = "So11111111111111111111111111111111111111112";
+const JUPITER_BASE_URL = env.JUPITER_API_BASE_URL.replace(/\/+$/, "");
+
+async function fetchJupiter(path, options = {}) {
+  const headers = {
+    Accept: "application/json",
+    ...(options.headers || {})
+  };
+
+  if (options.body && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  if (env.JUPITER_API_KEY) {
+    headers["x-api-key"] = env.JUPITER_API_KEY;
+  }
+
+  let response;
+  try {
+    response = await fetch(`${JUPITER_BASE_URL}${path}`, {
+      ...options,
+      headers
+    });
+  } catch (error) {
+    throw new Error(`Gagal menghubungi Jupiter API (${JUPITER_BASE_URL}): ${error.message}`);
+  }
+
+  const text = await response.text();
+  let data = {};
+
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(`Respons Jupiter bukan JSON (${response.status}): ${text.slice(0, 200)}`);
+    }
+  }
+
+  if (!response.ok || data.error) {
+    const detail = data.error || data.message || text || response.statusText;
+    throw new Error(`Jupiter API ${response.status}: ${detail}`);
+  }
+
+  return data;
+}
+
+function buildQuotePath(inputMint, outputMint, amount) {
+  const params = new URLSearchParams({
+    inputMint,
+    outputMint,
+    amount: amount.toString(),
+    slippageBps: "1000",
+    restrictIntermediateTokens: "true"
+  });
+
+  return `/quote?${params.toString()}`;
+}
 
 // ==========================================
 // 🛒 MESIN PEMBELI (BUY)
@@ -33,23 +90,26 @@ export async function executeSwap(tokenAddress, amountSol) {
     const amountLamports = Math.floor(amountSol * 1e9); 
 
     console.log(`🔄 [Executor] Meminta rute harga terbaik dari Jupiter...`);
-    // PERBAIKAN: slippageBps = 1000 (10%)
-    const quoteResponse = await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${tokenAddress}&amount=${amountLamports}&slippageBps=1000`).then(res => res.json());
-    if (quoteResponse.error) throw new Error(quoteResponse.error);
+    const quoteResponse = await fetchJupiter(buildQuotePath(SOL_MINT, tokenAddress, amountLamports));
 
     console.log(`📝 [Executor] Menyusun draf transaksi swap...`);
-    const swapResponse = await fetch('https://quote-api.jup.ag/v6/swap', {
+    const swapResponse = await fetchJupiter('/swap', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         quoteResponse, 
         userPublicKey: wallet.publicKey.toString(), 
         wrapAndUnwrapSol: true,
-        prioritizationFeeLamports: "auto", // PERBAIKAN: Priority Fee Auto
+        dynamicSlippage: true,
+        prioritizationFeeLamports: {
+          priorityLevelWithMaxLamports: {
+            maxLamports: 1000000,
+            priorityLevel: "veryHigh"
+          }
+        },
         dynamicComputeUnitLimit: true      // PERBAIKAN: Limit komputasi dinamis
       })
-    }).then(res => res.json());
-    if (swapResponse.error) throw new Error(swapResponse.error);
+    });
 
     console.log(`✍️ [Executor] Menandatangani transaksi...`);
     const swapTransactionBuf = Buffer.from(swapResponse.swapTransaction, 'base64');
@@ -98,22 +158,25 @@ export async function executeSell(tokenAddress, reason, pnl, mode, sellFraction 
     const amountToSell = Math.floor(parseInt(totalBalance) * sellFraction).toString();
 
     console.log(`🔄 [Executor] Meminta rute jual ${sellFraction * 100}% ke Jupiter...`);
-    // PERBAIKAN: slippageBps = 1000 (10%)
-    const quoteResponse = await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${tokenAddress}&outputMint=So11111111111111111111111111111111111111112&amount=${amountToSell}&slippageBps=1000`).then(res => res.json());
-    if (quoteResponse.error) throw new Error(quoteResponse.error);
+    const quoteResponse = await fetchJupiter(buildQuotePath(tokenAddress, SOL_MINT, amountToSell));
 
-    const swapResponse = await fetch('https://quote-api.jup.ag/v6/swap', {
+    const swapResponse = await fetchJupiter('/swap', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         quoteResponse, 
         userPublicKey: wallet.publicKey.toString(), 
         wrapAndUnwrapSol: true,
-        prioritizationFeeLamports: "auto", // PERBAIKAN: Priority Fee Auto
+        dynamicSlippage: true,
+        prioritizationFeeLamports: {
+          priorityLevelWithMaxLamports: {
+            maxLamports: 1000000,
+            priorityLevel: "veryHigh"
+          }
+        },
         dynamicComputeUnitLimit: true      // PERBAIKAN: Limit komputasi dinamis
       })
-    }).then(res => res.json());
-    if (swapResponse.error) throw new Error(swapResponse.error);
+    });
 
     const swapTransactionBuf = Buffer.from(swapResponse.swapTransaction, 'base64');
     const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
