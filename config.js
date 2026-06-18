@@ -28,6 +28,29 @@ export const config = {
   }
 };
 
+export function normalizeMode(mode = config.mode) {
+  const value = String(mode || "").trim().toLowerCase();
+
+  if (value === "paper") return "paper_trading";
+  if (value === "live") return "live_trading";
+
+  return value;
+}
+
+export function isPaperTrading(mode = config.mode) {
+  return normalizeMode(mode) === "paper_trading";
+}
+
+export function isLiveTrading(mode = config.mode) {
+  return normalizeMode(mode) === "live_trading";
+}
+
+export function modeLabel(mode = config.mode) {
+  if (isPaperTrading(mode)) return "paper";
+  if (isLiveTrading(mode)) return "live";
+  return "unknown";
+}
+
 export const env = {
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || "",
   TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || "",
