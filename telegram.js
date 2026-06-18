@@ -1,10 +1,16 @@
 import TelegramBot from 'node-telegram-bot-api';
-import { env, config, saveConfig } from './config.js';
+import { env, config, saveConfig, isLiveTrading, isPaperTrading } from './config.js';
 import { addWalletListener, removeWalletListener } from './listener.js';
 import { executeSwap, executeSell } from './executor.js'; 
 
 const bot = new TelegramBot(env.TELEGRAM_BOT_TOKEN, { polling: true });
 const signalCache = new Map();
+
+function tradingModeText(mode) {
+  if (isPaperTrading(mode)) return '🟢 **[PAPER TRADING]** ';
+  if (isLiveTrading(mode)) return '🔥 **[LIVE TRADING]** ';
+  return '**[UNKNOWN MODE]** ';
+}
 
 // ==========================================
 // 🚨 FUNGSI ALERT & CALLBACK KOMBOL BELI
@@ -57,7 +63,7 @@ bot.on('callback_query', async (query) => {
     const result = await executeSwap(signalData.tokenAddress, signalData.amount);
     
     if (result.success) {
-      const modeText = result.mode === 'paper' ? '🟢 **[PAPER TRADING]** ' : '🔥 **[LIVE TRADING]** ';
+      const modeText = tradingModeText(result.mode);
       bot.sendMessage(env.TELEGRAM_CHAT_ID, `${modeText}Pembelian Berhasil!\n\n🔗 **TX ID:** \`${result.txId}\``, { parse_mode: 'Markdown' });
     } else {
       bot.sendMessage(env.TELEGRAM_CHAT_ID, `❌ **PEMBELIAN GAGAL!**\nAlasan: ${result.reason}`, { parse_mode: 'Markdown' });
@@ -139,7 +145,7 @@ bot.onText(/\/panic (.+)/, async (msg, match) => {
 // ==========================================
 export async function sendSellNotification(tokenAddress, reason, pnl, mode, txId) {
   const pnlText = pnl > 0 ? `🟢 Untung: +${pnl.toFixed(2)}%` : `🔴 Rugi/Manual: ${pnl.toFixed(2)}%`;
-  const modeText = mode === 'paper' ? '🟢 **[PAPER TRADING]** ' : '🔥 **[LIVE TRADING]** ';
+  const modeText = tradingModeText(mode);
 
   const message = `${modeText} **SELL EXECUTED!** 🚨\n\n` +
                   `Token: \`${tokenAddress}\`\n` +
