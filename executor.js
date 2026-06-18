@@ -1,6 +1,6 @@
 import { Connection, Keypair, VersionedTransaction, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
-import { env, config } from './config.js';
+import { env, isLiveTrading, isPaperTrading, modeLabel, normalizeMode } from './config.js';
 import { startTracking } from './tracker.js';
 import { sendSellNotification } from './telegram.js';
 
@@ -67,19 +67,25 @@ function buildQuotePath(inputMint, outputMint, amount) {
 // 🛒 MESIN PEMBELI (BUY)
 // ==========================================
 export async function executeSwap(tokenAddress, amountSol) {
+  const engineMode = normalizeMode();
+
   console.log(`\n⚙️ [Executor] Memulai proses eksekusi BUY untuk token: ${tokenAddress}`);
   
-  if (config.mode === "paper_trading") {
+  if (isPaperTrading(engineMode)) {
     console.log(`📝 [Paper Trading] Simulasi pembelian ${amountSol} SOL berhasil.`);
     await new Promise(resolve => setTimeout(resolve, 2000)); 
 
     // Mulai mata-mata harga
-    startTracking(tokenAddress, config.mode, async (addr, reason, pnl, mode, fraction) => {
+    startTracking(tokenAddress, engineMode, async (addr, reason, pnl, mode, fraction) => {
       console.log(`\n🤖 [Tracker - ${mode.toUpperCase()}] Sinyal Jual! Eksekusi SELL otomatis...`);
       await executeSell(addr, reason, pnl, mode, fraction);
     });
 
-    return { success: true, txId: "SIMULASI_TX_PAPER_TRADING", mode: "paper" };
+    return { success: true, txId: "SIMULASI_TX_PAPER_TRADING", mode: modeLabel(engineMode) };
+  }
+
+  if (!isLiveTrading(engineMode)) {
+    return { success: false, reason: `Mode trading tidak dikenal: ${engineMode}` };
   }
 
   // Logika LIVE TRADING (Buy)
@@ -121,12 +127,12 @@ export async function executeSwap(tokenAddress, amountSol) {
     console.log(`✅ [Executor] Pembelian Sukses! Signature: ${txId}`);
 
     // Mulai mata-mata harga setelah live buy sukses
-    startTracking(tokenAddress, config.mode, async (addr, reason, pnl, mode, fraction) => {
+    startTracking(tokenAddress, engineMode, async (addr, reason, pnl, mode, fraction) => {
       console.log(`\n🤖 [Tracker - ${mode.toUpperCase()}] Sinyal Jual! Eksekusi SELL otomatis...`);
       await executeSell(addr, reason, pnl, mode, fraction);
     });
 
-    return { success: true, txId: txId, mode: "live" };
+    return { success: true, txId: txId, mode: modeLabel(engineMode) };
 
   } catch (error) {
     console.error(`❌ [Executor Error] ${error.message}`);
@@ -138,9 +144,16 @@ export async function executeSwap(tokenAddress, amountSol) {
 // 📉 MESIN PENJUAL (AUTO-SELL & PANIC)
 // ==========================================
 export async function executeSell(tokenAddress, reason, pnl, mode, sellFraction = 1.0) {
-  if (mode === "paper_trading") {
+  const engineMode = normalizeMode(mode);
+
+  if (isPaperTrading(engineMode)) {
     console.log(`📝 [Paper Trading] Simulasi penjualan ${sellFraction * 100}% token berhasil.`);
-    await sendSellNotification(tokenAddress, reason, pnl, mode, "SIMULASI_TX_SELL_PAPER");
+    await sendSellNotification(tokenAddress, reason, pnl, modeLabel(engineMode), "SIMULASI_TX_SELL_PAPER");
+    return;
+  }
+
+  if (!isLiveTrading(engineMode)) {
+    await sendSellNotification(tokenAddress, `GAGAL JUAL: Mode trading tidak dikenal: ${engineMode}`, pnl, modeLabel(engineMode), "FAILED");
     return;
   }
 
@@ -187,10 +200,10 @@ export async function executeSell(tokenAddress, reason, pnl, mode, sellFraction 
     
     console.log(`✅ [Executor] Penjualan Sukses! Signature: ${txId}`);
     
-    await sendSellNotification(tokenAddress, reason, pnl, mode, txId);
+    await sendSellNotification(tokenAddress, reason, pnl, modeLabel(engineMode), txId);
 
   } catch (error) {
     console.error(`❌ [Executor Sell Error] ${error.message}`);
-    await sendSellNotification(tokenAddress, `GAGAL JUAL: ${error.message}`, pnl, mode, "FAILED");
+    await sendSellNotification(tokenAddress, `GAGAL JUAL: ${error.message}`, pnl, modeLabel(engineMode), "FAILED");
   }
 }
